@@ -1,0 +1,18 @@
+[project]
+name = "localcurl"
+version = "0.1.0"
+description = "Replay remote curl requests locally"
+readme = "README.md"
+authors = [
+    { name = "Sylvain Gable"}
+]
+license = "MIT"
+requires-python = ">=3.12.4"
+dependencies = []
+
+[project.scripts]
+localcurl = "localcurl:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
