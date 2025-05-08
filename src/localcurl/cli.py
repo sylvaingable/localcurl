@@ -60,6 +60,11 @@ def main() -> int:
         help="Disable SSL certificate verification",
     )
     parser.add_argument(
+        "--keep-host-cookie-prefix",
+        action="store_true",
+        help="Prevent stripping __Host- prefix from cookies",
+    )
+    parser.add_argument(
         "curl_command",
         nargs=argparse.REMAINDER,
         help="The curl command to parse (reads from stdin if not provided)",
@@ -78,6 +83,13 @@ def main() -> int:
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    # Strip the __Host- prefix from cookies unless instructed otherwise.
+    if args.keep_host_cookie_prefix is False:
+        request.cookies = {
+            k[len("__Host-") :] if k.startswith("__Host-") else k: v
+            for k, v in request.cookies.items()
+        }
 
     with requests.Session() as session:
         session.verify = not args.no_verify
