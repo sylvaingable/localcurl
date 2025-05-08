@@ -1,4 +1,6 @@
 import argparse
+import contextlib
+import io
 import shlex
 import sys
 from urllib.parse import urlsplit, urlunsplit
@@ -27,7 +29,17 @@ def replace_address(url: str, local_addr: str) -> str:
 
 def curl_to_request(curl_command: str, local_addr: str) -> requests.Request:
     """Convert a curl command to a requests.Request object."""
-    parsed_context = uncurl.parse_context(curl_command)._asdict()
+    # uncurl uses argparse to parse the curl command, which prints an error message and
+    # calls sys.exit() on failure. We need to catch SystemExit exceptions to detect
+    # parsing errors and must capture the output to avoid printing it to stdout.
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+        io.StringIO()
+    ):
+        try:
+            parsed_context = uncurl.parse_context(curl_command)._asdict()
+        except SystemExit:
+            raise ValueError("Failed to parse curl command. Please verify the syntax.")
+
     parsed_context["url"] = replace_address(parsed_context["url"], local_addr)
     # Remove the 'verify' key if it exists as it's not handled at the request level but
     # at the session's one.
@@ -61,12 +73,17 @@ def main() -> int:
         # clipboard.
         curl_command = pyperclip.paste() if sys.stdin.isatty() else sys.stdin.read()
 
-    request = curl_to_request(curl_command=curl_command, local_addr=args.local_addr)
+    try:
+        request = curl_to_request(curl_command=curl_command, local_addr=args.local_addr)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     with requests.Session() as session:
         session.verify = not args.no_verify
         response = session.send(request.prepare())
     print(response.text)
+
     return 0
 
 
