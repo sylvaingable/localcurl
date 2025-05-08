@@ -116,12 +116,14 @@ name = "localcurl"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "pyperclip" },
     { name = "requests" },
     { name = "uncurl" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "pyperclip", specifier = ">=1.9.0" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "uncurl", specifier = ">=0.0.11" },
 ]

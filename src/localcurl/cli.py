@@ -3,6 +3,7 @@ import shlex
 import sys
 from urllib.parse import urlsplit, urlunsplit
 
+import pyperclip
 import requests
 import uncurl
 
@@ -53,11 +54,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if not args.curl_command:
-        # Read curl command from stdin if no command arguments provided
-        curl_command = sys.stdin.read().strip()
-    else:
+    if args.curl_command:
         curl_command = shlex.join(args.curl_command)
+    else:
+        # No curl command was provided as arguments, try to read from stdin or the
+        # clipboard.
+        curl_command = pyperclip.paste() if sys.stdin.isatty() else sys.stdin.read()
 
     request = curl_to_request(curl_command=curl_command, local_addr=args.local_addr)
 
