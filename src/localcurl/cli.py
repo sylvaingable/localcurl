@@ -1,5 +1,6 @@
 import argparse
 import shlex
+import sys
 from urllib.parse import urlsplit, urlunsplit
 
 import requests
@@ -48,12 +49,18 @@ def main() -> int:
     parser.add_argument(
         "curl_command",
         nargs=argparse.REMAINDER,
-        help="The curl command to parse",
+        help="The curl command to parse (reads from stdin if not provided)",
     )
     args = parser.parse_args()
-    request = curl_to_request(
-        curl_command=shlex.join(args.curl_command), local_addr=args.local_addr
-    )
+
+    if not args.curl_command:
+        # Read curl command from stdin if no command arguments provided
+        curl_command = sys.stdin.read().strip()
+    else:
+        curl_command = shlex.join(args.curl_command)
+
+    request = curl_to_request(curl_command=curl_command, local_addr=args.local_addr)
+
     with requests.Session() as session:
         session.verify = not args.no_verify
         response = session.send(request.prepare())
