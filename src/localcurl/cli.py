@@ -7,7 +7,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 import pyperclip
 import requests
-import uncurl
+
+from . import parsers
 
 
 def replace_address(url: str, local_addr: str) -> str:
@@ -36,7 +37,7 @@ def curl_to_request(curl_command: str, local_addr: str) -> requests.Request:
         io.StringIO()
     ):
         try:
-            parsed_context = uncurl.parse_context(curl_command)._asdict()
+            parsed_context = parsers.curl_to_request(curl_command)._asdict()
         except SystemExit:
             raise ValueError("Failed to parse curl command. Please verify the syntax.")
 
@@ -79,10 +80,13 @@ def main() -> int:
         curl_command = pyperclip.paste() if sys.stdin.isatty() else sys.stdin.read()
 
     try:
-        request = curl_to_request(curl_command=curl_command, local_addr=args.local_addr)
+        request = parsers.curl_to_request(curl_command)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    # Replace the original address with the local one.
+    request.url = replace_address(request.url, args.local_addr)
 
     # Strip the __Host- prefix from cookies unless instructed otherwise.
     if args.keep_host_cookie_prefix is False:
