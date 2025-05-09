@@ -7,7 +7,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 import pyperclip
 import requests
-import uncurl
+
+from . import parsers
 
 
 def replace_address(url: str, local_addr: str) -> str:
@@ -25,26 +26,6 @@ def replace_address(url: str, local_addr: str) -> str:
     )
 
     return urlunsplit(new_parts)
-
-
-def curl_to_request(curl_command: str, local_addr: str) -> requests.Request:
-    """Convert a curl command to a requests.Request object."""
-    # uncurl uses argparse to parse the curl command, which prints an error message and
-    # calls sys.exit() on failure. We need to catch SystemExit exceptions to detect
-    # parsing errors and must capture the output to avoid printing it to stdout.
-    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
-        io.StringIO()
-    ):
-        try:
-            parsed_context = uncurl.parse_context(curl_command)._asdict()
-        except SystemExit:
-            raise ValueError("Failed to parse curl command. Please verify the syntax.")
-
-    parsed_context["url"] = replace_address(parsed_context["url"], local_addr)
-    # Remove the 'verify' key if it exists as it's not handled at the request level but
-    # at the session's one.
-    parsed_context.pop("verify", None)
-    return requests.Request(**parsed_context)
 
 
 def main() -> int:
@@ -79,10 +60,13 @@ def main() -> int:
         curl_command = pyperclip.paste() if sys.stdin.isatty() else sys.stdin.read()
 
     try:
-        request = curl_to_request(curl_command=curl_command, local_addr=args.local_addr)
+        request = parsers.curl_to_request(curl_command)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    # Replace the original address with the local one.
+    request.url = replace_address(request.url, args.local_addr)
 
     # Strip the __Host- prefix from cookies unless instructed otherwise.
     if args.keep_host_cookie_prefix is False:
