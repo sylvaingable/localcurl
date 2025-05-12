@@ -1,7 +1,9 @@
 {
     "cSpell.words": [
         "getfixturevalue",
+        "localaddr",
         "localcurl",
         "sysargv"
-    ]
+    ],
+    "python.analysis.typeCheckingMode": "standard"
 }

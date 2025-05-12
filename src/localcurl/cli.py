@@ -1,32 +1,36 @@
+from __future__ import annotations
+
 import argparse
 import shlex
 import sys
+from typing import Any, Callable, Protocol, TextIO
 from urllib.parse import urlsplit, urlunsplit
 
 import pyperclip
 import requests
+from requests.models import PreparedRequest, Response
 
 from . import parsers
 
 
-def replace_address(url: str, local_addr: str) -> str:
-    """
-    Replace the scheme, host and port in the URL with the local address ones.
-    """
-    original_parts = urlsplit(url)
-    replacement_parts = urlsplit(local_addr)
-    new_parts = (
-        replacement_parts.scheme,
-        replacement_parts.netloc,
-        original_parts.path,
-        original_parts.query,
-        original_parts.fragment,
-    )
-
-    return urlunsplit(new_parts)
+class ClipboardInterface(Protocol):
+    def paste(self) -> str: ...
 
 
-def main(session_factory=requests.Session) -> int:
+class SessionLike(Protocol):
+    verify: bool | str | None
+
+    def __enter__(self) -> SessionLike: ...
+    def __exit__(self, *args: Any) -> None: ...
+    def send(self, request: PreparedRequest) -> Response: ...
+
+
+def main(
+    cmd_line_args: list[str] = sys.argv,
+    stdin: TextIO = sys.stdin,
+    clipboard: ClipboardInterface = pyperclip,
+    session_factory: Callable[[], SessionLike] = requests.Session,
+) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "local_addr",
@@ -48,19 +52,19 @@ def main(session_factory=requests.Session) -> int:
         nargs=argparse.REMAINDER,
         help="The curl command to parse (reads from stdin if not provided)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(args=cmd_line_args[1:])
 
     if args.curl_command:
         curl_command = shlex.join(args.curl_command)
     else:
         # No curl command was provided as arguments, try to read from stdin or the
         # clipboard.
-        curl_command = pyperclip.paste() if sys.stdin.isatty() else sys.stdin.read()
+        curl_command = clipboard.paste() if stdin.isatty() else stdin.read()
 
     try:
         request = parsers.curl_to_request(curl_command)
     except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"Error: {e}", f"{curl_command}", file=sys.stderr)
         return 1
 
     # Replace the original address with the local one.
@@ -83,3 +87,20 @@ def main(session_factory=requests.Session) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def replace_address(url: str, local_addr: str) -> str:
+    """
+    Replace the scheme, host and port in the URL with the local address ones.
+    """
+    original_parts = urlsplit(url)
+    replacement_parts = urlsplit(local_addr)
+    new_parts = (
+        replacement_parts.scheme,
+        replacement_parts.netloc,
+        original_parts.path,
+        original_parts.query,
+        original_parts.fragment,
+    )
+
+    return urlunsplit(new_parts)

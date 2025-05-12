@@ -1,5 +1,4 @@
-import sys
-from unittest.mock import patch
+import io
 
 import pytest
 import requests
@@ -7,59 +6,148 @@ import requests
 from localcurl.cli import main, replace_address
 
 
-def test_replace_address():
-    original_url = "https://api.github.com/repos/user/repo"
-    local_addr = "http://localhost:8080"
-    expected = "http://localhost:8080/repos/user/repo"
+@pytest.mark.parametrize(
+    "original_url, local_addr, expected",
+    [
+        # Basic case
+        (
+            "https://api.github.com/repos/user/repo",
+            "http://localhost:8080",
+            "http://localhost:8080/repos/user/repo",
+        ),
+        # URL with query parameters
+        (
+            "https://api.github.com/search?q=test",
+            "http://localhost:8080",
+            "http://localhost:8080/search?q=test",
+        ),
+        # URL with fragment
+        (
+            "https://api.github.com/docs#section1",
+            "http://localhost:8080",
+            "http://localhost:8080/docs#section1",
+        ),
+        # URL with port
+        (
+            "https://api.github.com:443/v1/data",
+            "http://localhost:8080",
+            "http://localhost:8080/v1/data",
+        ),
+    ],
+)
+def test_replace_address(original_url, local_addr, expected):
+    """Check only the address part is replaced in the URL."""
     assert replace_address(original_url, local_addr) == expected
 
 
+def generate_test_parameters(localaddr: str, curl_command: str):
+    """
+    Generate test parameters for the main function, accounting for the 3 different ways
+    the curl command can be passed to the program:
+    - From the command line
+    - From stdin
+    - From the clipboard
+    """
+    return (
+        pytest.param(
+            ["localcurl", localaddr, *curl_command.split(" ")],
+            "",
+            True,
+            "",
+            id="curl_from_command_line",
+        ),
+        pytest.param(
+            ["localcurl", localaddr],
+            curl_command,
+            False,
+            "",
+            id="curl_from_stdin",
+        ),
+        pytest.param(
+            ["localcurl", localaddr],
+            "",
+            True,
+            curl_command,
+            id="curl_from_clipboard",
+        ),
+    )
+
+
 @pytest.mark.parametrize(
-    "patcher_name", ["sysargv_patcher", "stdin_patcher", "clipboard_patcher"]
+    ["cmd_line_args", "stdin_value", "is_stdin_a_tty", "clipboard_value"],
+    generate_test_parameters("http://localhost:8080/", "curl https://example.com"),
 )
-def test_main(patcher_name, fake_session, request):
-    input_command_patcher = request.getfixturevalue(patcher_name)
-    with input_command_patcher("curl", "http://example.com"):
-        exit_code = main(session_factory=lambda: fake_session)
+def test_get_url(
+    cmd_line_args,
+    stdin_value,
+    is_stdin_a_tty,
+    clipboard_value,
+    make_fake_stdin,
+    make_fake_clipboard,
+    fake_session,
+):
+    """Test the CLI interface for a simple GET request."""
+    exit_code = main(
+        cmd_line_args=cmd_line_args,
+        stdin=make_fake_stdin(isatty=is_stdin_a_tty, initial_value=stdin_value),
+        clipboard=make_fake_clipboard(clipboard_value),
+        session_factory=lambda: fake_session,
+    )
 
     assert exit_code == 0
     assert fake_session.sent_request.url == "http://localhost:8080/"
     assert fake_session.sent_request.method == "GET"
 
 
-@pytest.fixture
-def sysargv_patcher(*args: str):
-    """Fixture to patch sys.argv for testing"""
-    yield lambda *args: patch.object(
-        sys, "argv", ["localcurl", "http://localhost:8080/", *args]
-    )
+class FakeStdin(io.StringIO):
+    """Mimics sys.stdin for testing purposes."""
+
+    def __init__(
+        self,
+        isatty: bool = True,
+        initial_value: str | None = "",
+        newline: str | None = "\n",
+    ):
+        super().__init__(initial_value, newline)
+        self._isatty = isatty
+
+    def isatty(self):
+        return self._isatty
 
 
 @pytest.fixture
-def stdin_patcher():
-    """Fixture to patch sys.stdin for testing"""
-    with patch.object(
-        sys, "argv", ["localcurl", "http://localhost:8080/"]
-    ), patch.object(sys.stdin, "isatty", return_value=False):
-        yield lambda *args: patch.object(sys.stdin, "read", return_value=" ".join(args))
+def make_fake_stdin():
+    def _make_fake_stdin(isatty: bool = True, initial_value: str = ""):
+        return FakeStdin(isatty=isatty, initial_value=initial_value)
+
+    return _make_fake_stdin
+
+
+class FakeClipboard:
+    """Mimics the pyperclip.paste function for testing purposes."""
+
+    def __init__(self, initial_value: str = ""):
+        self._value = initial_value
+
+    def paste(self):
+        return self._value
 
 
 @pytest.fixture
-def clipboard_patcher():
-    """Fixture to patch pyperclip.paste for testing"""
-    with patch.object(
-        sys, "argv", ["localcurl", "http://localhost:8080/"]
-    ), patch.object(sys.stdin, "isatty", return_value=True):
-        yield lambda *args: patch("pyperclip.paste", return_value=" ".join(args))
+def make_fake_clipboard():
+    def _make_fake_clipboard(initial_value: str = ""):
+        return FakeClipboard(initial_value)
+
+    return _make_fake_clipboard
 
 
 class FakeSessionFactory:
-    """Mimics the requests.Session class for testing purposes, it stores the last
-    request sent through it.
+    """Mimics the minimal required portion of the  requests.Session interface for
+    testing purposes (and it stores the last request sent through it).
     """
 
     def __init__(self):
-        self.sent_request: requests.Request = None
+        self.sent_request: requests.Request = requests.Request()
 
     def __enter__(self):
         return self
@@ -67,7 +155,7 @@ class FakeSessionFactory:
     def __exit__(self, *args):
         pass
 
-    def send(self, request: requests.Request):
+    def send(self, request: requests.Request) -> requests.Response:
         self.sent_request = request
         return requests.Response()
 
