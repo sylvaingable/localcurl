@@ -1,6 +1,4 @@
 import argparse
-import contextlib
-import io
 import shlex
 import sys
 from urllib.parse import urlsplit, urlunsplit
@@ -28,7 +26,7 @@ def replace_address(url: str, local_addr: str) -> str:
     return urlunsplit(new_parts)
 
 
-def main() -> int:
+def main(session_factory=requests.Session) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "local_addr",
@@ -75,7 +73,7 @@ def main() -> int:
             for k, v in request.cookies.items()
         }
 
-    with requests.Session() as session:
+    with session_factory() as session:
         session.verify = not args.no_verify
         response = session.send(request.prepare())
     print(response.text)

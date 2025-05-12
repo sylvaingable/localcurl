@@ -63,7 +63,7 @@ def test_invalid_command():
 
 
 def test_complex_request():
-    cmd = """curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer token123" -b "session=abc" --data-binary '{"key":"value"}' http://example.com"""
+    cmd = """curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer token123" -b "session=abc" --data-raw '{"key":"value"}' http://example.com"""
     request = curl_to_request(cmd)
 
     assert request.method == "post"
