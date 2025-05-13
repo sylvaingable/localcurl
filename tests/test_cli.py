@@ -1,4 +1,5 @@
 import io
+import shlex
 
 import pytest
 import requests
@@ -40,7 +41,9 @@ def test_replace_address(original_url, local_addr, expected):
     assert replace_address(original_url, local_addr) == expected
 
 
-def generate_test_parameters(localaddr: str, curl_command: str):
+def generate_test_parameters(
+    localaddr: str, curl_command: str, optional_args: list[str] | None = None
+):
     """
     Generate test parameters for the main function, accounting for the 3 different ways
     the curl command can be passed to the program:
@@ -48,23 +51,26 @@ def generate_test_parameters(localaddr: str, curl_command: str):
     - From stdin
     - From the clipboard
     """
+    if optional_args is None:
+        optional_args = []
+
     return (
         pytest.param(
-            ["localcurl", localaddr, *curl_command.split(" ")],
+            ["localcurl", *optional_args, localaddr, *shlex.split(curl_command)],
             "",
             True,
             "",
             id="curl_from_command_line",
         ),
         pytest.param(
-            ["localcurl", localaddr],
+            ["localcurl", *optional_args, localaddr],
             curl_command,
             False,
             "",
             id="curl_from_stdin",
         ),
         pytest.param(
-            ["localcurl", localaddr],
+            ["localcurl", *optional_args, localaddr],
             "",
             True,
             curl_command,
@@ -75,7 +81,9 @@ def generate_test_parameters(localaddr: str, curl_command: str):
 
 @pytest.mark.parametrize(
     ["cmd_line_args", "stdin_value", "is_stdin_a_tty", "clipboard_value"],
-    generate_test_parameters("http://localhost:8080/", "curl https://example.com"),
+    generate_test_parameters(
+        localaddr="http://localhost:8080/", curl_command="curl https://example.com"
+    ),
 )
 def test_get_url(
     cmd_line_args,
@@ -97,6 +105,68 @@ def test_get_url(
     assert exit_code == 0
     assert fake_session.sent_request.url == "http://localhost:8080/"
     assert fake_session.sent_request.method == "GET"
+
+
+@pytest.mark.parametrize(
+    ["cmd_line_args", "stdin_value", "is_stdin_a_tty", "clipboard_value"],
+    generate_test_parameters(
+        localaddr="http://localhost:8080/",
+        curl_command="curl -b '__Host-foo=abc123' -H 'Cookie: __Host-bar=def456' https://example.com",
+    ),
+)
+def test_strip_host_cookie_prefix_by_default(
+    cmd_line_args,
+    stdin_value,
+    is_stdin_a_tty,
+    clipboard_value,
+    make_fake_stdin,
+    make_fake_clipboard,
+    fake_session,
+):
+    """Test that __Host- prefix is kept when --keep-host-cookie-prefix is passed."""
+    print(f"{cmd_line_args=}")
+    exit_code = main(
+        cmd_line_args=cmd_line_args,
+        stdin=make_fake_stdin(isatty=is_stdin_a_tty, initial_value=stdin_value),
+        clipboard=make_fake_clipboard(clipboard_value),
+        session_factory=lambda: fake_session,
+    )
+
+    assert exit_code == 0
+    assert fake_session.sent_request.url == "http://localhost:8080/"
+    assert "foo" in fake_session.sent_request._cookies
+    assert "bar" in fake_session.sent_request._cookies
+
+
+@pytest.mark.parametrize(
+    ["cmd_line_args", "stdin_value", "is_stdin_a_tty", "clipboard_value"],
+    generate_test_parameters(
+        localaddr="http://localhost:8080/",
+        curl_command="curl -b '__Host-foo=abc123' -H 'Cookie: __Host-bar=def456' https://example.com",
+        optional_args=["--keep-host-cookie-prefix"],
+    ),
+)
+def test_keep_host_cookie_prefix(
+    cmd_line_args,
+    stdin_value,
+    is_stdin_a_tty,
+    clipboard_value,
+    make_fake_stdin,
+    make_fake_clipboard,
+    fake_session,
+):
+    """Test that __Host- prefix is kept when --keep-host-cookie-prefix is passed."""
+    exit_code = main(
+        cmd_line_args=cmd_line_args,
+        stdin=make_fake_stdin(isatty=is_stdin_a_tty, initial_value=stdin_value),
+        clipboard=make_fake_clipboard(clipboard_value),
+        session_factory=lambda: fake_session,
+    )
+
+    assert exit_code == 0
+    assert fake_session.sent_request.url == "http://localhost:8080/"
+    assert "__Host-foo" in fake_session.sent_request._cookies
+    assert "__Host-bar" in fake_session.sent_request._cookies
 
 
 class FakeStdin(io.StringIO):
