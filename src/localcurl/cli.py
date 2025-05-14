@@ -69,8 +69,8 @@ def main(
 
     try:
         request = parsers.curl_to_request(curl_command)
-    except ValueError as e:
-        print(f"Error: {e}", f"{curl_command}", file=sys.stderr)
+    except parsers.CurlParsingError as e:
+        print(f"Unrecognized curl command: {e}", file=sys.stderr)
         return 1
 
     # Replace the original address with the local one.

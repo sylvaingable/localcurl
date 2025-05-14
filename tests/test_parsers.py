@@ -1,6 +1,6 @@
 import pytest
 
-from localcurl.parsers import curl_to_request
+from localcurl.parsers import CurlParsingError, curl_to_request
 
 
 def test_simple_get():
@@ -58,8 +58,8 @@ def test_data_binary():
 
 
 def test_invalid_command():
-    with pytest.raises(ValueError, match="Failed to parse curl command"):
-        curl_to_request("curl -invalid-flag http://example.com")
+    with pytest.raises(CurlParsingError):
+        curl_to_request("curl --invalid-flag http://example.com")
 
 
 def test_complex_request():
