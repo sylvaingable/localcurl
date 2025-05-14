@@ -61,6 +61,12 @@ def main(
         # clipboard.
         curl_command = clipboard.paste() if stdin.isatty() else stdin.read()
 
+    # If the curl command has was split across multiple lines (with trailing
+    # backslashes) it ends having "\\\n" characters in it that would cause the curl
+    # command parser to fail. We need to remove them.
+    curl_command = curl_command.replace("\\\n", "")
+    curl_command = curl_command.replace("\\\r\n", "")
+
     try:
         request = parsers.curl_to_request(curl_command)
     except ValueError as e:

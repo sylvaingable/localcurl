@@ -169,6 +169,50 @@ def test_keep_host_cookie_prefix(
     assert "__Host-bar" in fake_session.sent_request._cookies
 
 
+def test_handle_lines_curl_args_line_breaks_from_stdin(
+    make_fake_stdin,
+    make_fake_clipboard,
+    fake_session,
+):
+    """Test that line breaks in curl command are handled correctly."""
+    curl_command = (
+        "curl 'https://example.com' \\\n -H 'Accept: application/json, text/plain, */*'"
+    )
+    stdin = make_fake_stdin(isatty=False, initial_value=curl_command)
+    clipboard = make_fake_clipboard()
+
+    exit_code = main(
+        cmd_line_args=["localcurl", "http://localhost:8080/"],
+        stdin=stdin,
+        clipboard=clipboard,
+        session_factory=lambda: fake_session,
+    )
+
+    assert exit_code == 0
+
+
+def test_handle_lines_curl_args_line_breaks_from_clipboard(
+    make_fake_stdin,
+    make_fake_clipboard,
+    fake_session,
+):
+    """Test that line breaks in curl command are handled correctly."""
+    curl_command = (
+        "curl 'https://example.com' \\\n -H 'Accept: application/json, text/plain, */*'"
+    )
+    stdin = make_fake_stdin()
+    clipboard = make_fake_clipboard(initial_value=curl_command)
+
+    exit_code = main(
+        cmd_line_args=["localcurl", "http://localhost:8080/"],
+        stdin=stdin,
+        clipboard=clipboard,
+        session_factory=lambda: fake_session,
+    )
+
+    assert exit_code == 0
+
+
 class FakeStdin(io.StringIO):
     """Mimics sys.stdin for testing purposes."""
 
